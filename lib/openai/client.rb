@@ -12,6 +12,7 @@ module OpenAI
       uri_base
       request_timeout
       extra_headers
+      azure_token_provider
     ].freeze
     attr_reader *CONFIG_KEYS, :faraday_middleware
 
@@ -25,6 +26,8 @@ module OpenAI
         )
       end
       @faraday_middleware = faraday_middleware
+      validate_credential_config!
+      validate_azure_credential_provider!
     end
 
     def chat(parameters: {})
@@ -107,6 +110,31 @@ module OpenAI
       dup.tap do |client|
         client.add_headers("OpenAI-Beta": apis.map { |k, v| "#{k}=#{v}" }.join(";"))
       end
+    end
+
+    private
+
+    def validate_credential_config!
+      if @access_token && @azure_token_provider
+        raise ConfigurationError,
+              "Only one of OpenAI access token or Azure token provider can be set! See https://github.com/alexrudall/ruby-openai#usage"
+      end
+
+      return if @access_token || @azure_token_provider
+
+      raise ConfigurationError,
+            "OpenAI access token or Azure token provider missing! See https://github.com/alexrudall/ruby-openai#usage"
+    end
+
+    def validate_azure_credential_provider!
+      return if @azure_token_provider.nil?
+
+      unless @azure_token_provider.respond_to?(:to_proc)
+        raise ConfigurationError,
+              "OpenAI Azure AD token provider must be a Proc, Lambda, or respond to to_proc."
+      end
+
+      @azure_token_provider = @azure_token_provider&.to_proc
     end
 
     def inspect
